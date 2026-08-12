@@ -1,0 +1,27 @@
+name: ipl_analytics
+version: 1.0.0
+config-version: 2
+
+profile: ipl_analytics
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+analysis-paths: ["analyses"]
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  ipl_analytics:
+    staging:
+      +materialized: view
+      +schema: STAGING
+    marts:
+      +materialized: table
+      +schema: MARTS
+    gold:
+      +materialized: view
+      +schema: GOLD

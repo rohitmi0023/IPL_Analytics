@@ -1,0 +1,7 @@
+streamlit
+plotly
+pandas
+snowflake-connector-python
+dbt-core
+dbt-snowflake>=1.8.9
+python-dotenv

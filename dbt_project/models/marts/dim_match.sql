@@ -1,0 +1,19 @@
+select
+    match_id,
+    season,
+    city,
+    venue,
+    match_date,
+    event_name,
+    event_stage,
+    team_1,
+    team_2,
+    toss_winner,
+    toss_decision,
+    winner,
+    result_runs,
+    result_wickets,
+    player_of_match,
+    match_type,
+    gender
+from {{ ref('stg_matches') }}

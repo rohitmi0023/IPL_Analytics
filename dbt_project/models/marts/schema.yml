@@ -1,0 +1,96 @@
+version: 2
+
+models:
+  - name: dim_match
+    description: "Match-level dimension, one row per match."
+    columns:
+      - name: match_id
+        description: "Natural key, derived from source filename."
+        data_tests:
+          - unique
+          - not_null
+  - name: dim_team
+    description: "Team dimension, one row per team."
+    columns:
+      - name: team_id
+        description: "Surrogate key, md5 of team_name."
+        data_tests:
+          - unique
+          - not_null
+      - name: team_name
+        description: "Team name."
+        data_tests:
+          - unique
+          - not_null
+  - name: dim_player
+    description: "Player dimension, one row per player per match."
+    data_tests:
+      - unique_combination_of_columns:
+          name: check_player_uniqueness
+          arguments:
+            column_list: [match_id, player_name]
+    columns:
+      - name: player_id
+        description: "Surrogate key, md5 of player_name."
+        data_tests:
+          - unique
+          - not_null
+      - name: player_name
+        description: "Player name."
+        data_tests:
+          - not_null
+      - name: team_name
+        description: "Team the player represented in this match."
+        data_tests:
+          - not_null
+      - name: match_id
+        description: "Match identifier."
+        data_tests:
+          - not_null
+
+# fact_ball model tests
+# - not_null: match_id, innings_no, over_no, ball_in_over, batter, bowler, batting_team, bowling_team, batter_id, bowler_id
+# - Custom composite (model-level): unique_combination_of_columns on [match_id, innings_no, over_no, ball_in_over] — custom name check_delivery_grain_uniqueness
+# - Referential integrity: relationships on batter_id → dim_player.player_id (resume-friendly FK demo)
+  - name: fact_ball
+    description: "Per delivery fact table"
+    data_tests:
+      - unique_combination_of_columns:
+          name: check_fact_delivery_grain_uniqueness
+          arguments:
+            column_list: [match_id, innings_no, over_no, ball_in_over]
+    columns:
+      - name: match_id
+        data_tests:
+          - not_null
+      - name: innings_no
+        data_tests:
+          - not_null
+      - name: over_no
+        data_tests:
+          - not_null
+      - name: ball_in_over
+        data_tests:
+          - not_null
+      - name: batter
+        data_tests:
+          - not_null
+      - name: bowler
+        data_tests:
+          - not_null
+      - name: batting_team
+        data_tests:
+          - not_null
+      - name: bowling_team
+        data_tests:
+          - not_null
+      - name: batter_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_player')
+                field: player_id
+      - name: bowler_id
+        data_tests:
+          - not_null

@@ -1,0 +1,17 @@
+# Copy this file to ~/.dbt/profiles.yml and fill in your values.
+# Reference: https://docs.getdbt.com/docs/core/connect-data-platform/snowflake-setup
+
+ipl_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: <your_account_identifier>   # e.g. xyz12345.us-east-1
+      user: ADMIN
+      password: <your_password>
+      role: IPL_ENGINEER_ROLE
+      database: IPL_ANALYTICS_DB
+      warehouse: IPL_TRANSFORM_WH
+      schema: RAW
+      threads: 1
+      client_session_keep_alive: False

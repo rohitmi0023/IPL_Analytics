@@ -1,0 +1,28 @@
+version: 2
+
+sources:
+  - name: raw
+    database: IPL_ANALYTICS_DB
+    schema: RAW
+    description: "Raw ingested Cricsheet match JSON, one row per match file."
+    tables:
+      - name: raw_match_json
+        description: "One row per ingested match file; match JSON stored as VARIANT."
+        columns:
+          - name: match_id
+            description: "Match identifier derived from the source filename."
+            tests:
+              - not_null
+              - unique
+          - name: file_name
+            description: "Name of the source JSON file in the internal stage."
+            tests:
+              - not_null
+          - name: raw_variant
+            description: "Full Cricsheet match document as a VARIANT."
+            tests:
+              - not_null
+          - name: loaded_at
+            description: "Timestamp when the row was loaded into RAW."
+            tests:
+              - not_null
