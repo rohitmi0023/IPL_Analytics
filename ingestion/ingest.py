@@ -74,7 +74,7 @@ def copy_files(conn, match_ids: list[str]) -> int:
         deleted = cur.rowcount
         # COPY INTO IPL_ANALYTICS_DB.RAW.RAW_MATCH_JSON (match_id, file_name, raw_variant)
         # FROM (
-        #     SELECT REGEXP_SUBSTR(metadata$filename, '(.+)\.json$', 1, 1, 'e', 1),
+        #     SELECT REGEXP_SUBSTR(metadata$filename, '([^/]+)\.json$', 1, 1, 'e', 1),
         #         metadata$filename,
         #         $1
         #     FROM @IPL_ANALYTICS_DB.RAW.IPL_STAGE
@@ -84,7 +84,7 @@ def copy_files(conn, match_ids: list[str]) -> int:
             f"""
             COPY INTO {RAW_TABLE} (match_id, file_name, raw_variant)
             FROM (
-                SELECT REGEXP_SUBSTR(metadata$filename, '(.+)\\.json$', 1, 1, 'e', 1),
+                SELECT REGEXP_SUBSTR(metadata$filename, '([^/]+)\\.json$', 1, 1, 'e', 1),
                        metadata$filename,
                        $1
                 FROM @{STAGE_NAME}

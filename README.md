@@ -7,31 +7,43 @@ End-to-end data pipeline for Indian Premier League (IPL) ball-by-ball match anal
 ## Architecture
 
 ```
-Cricsheet JSON (981017.json)
-        │  PUT + COPY INTO
-        ▼
-┌─────────────────────────────┐
-│  Snowflake — RAW            │   raw_match_json
-└────────────┬────────────────┘
-             │  dbt Core
-             ▼
-┌─────────────────────────────┐
-│  Staging (stg_*)            │   flatten VARIANT → deliveries/innings/info
-└────────────┬────────────────┘
-             │
-             ▼
-┌─────────────────────────────┐
-│  Marts (dim_* / fact_*)     │   dim_match, dim_player, dim_team, fact_ball
-└────────────┬────────────────┘
-             │
-             ▼
-┌─────────────────────────────┐
-│  Gold (v_*)                 │   v_match_summary, v_batting, v_bowling,
-│                             │   v_phase, v_partnership
-└────────────┬────────────────┘
-             │
-             ▼
-        Streamlit Dashboard
+                                    ┌──────────────────┐
+                                    │  Cricsheet JSON   │
+                                    └────────┬─────────┘
+                                             │
+                              ┌──────────────┴──────────────┐
+                              ▼                              ▼
+                    ┌─────────────────┐          ┌────────────────────┐
+                    │  Local file     │          │  S3 bucket         │
+                    │  PUT + COPY INTO│          │  (land/)           │
+                    └────────┬────────┘          └────────┬───────────┘
+                             │                            │
+                             │                   Snowpipe (AUTO_INGEST)
+                             │                            │
+                             └──────────┬─────────────────┘
+                                        ▼
+                             ┌───────────────────┐
+                             │  Snowflake — RAW  │   raw_match_json
+                             └──────┬────────────┘
+                                    │  dbt Core
+                                    ▼
+                        ┌────────────────────────────┐
+                        │  Staging (stg_*)           │   flatten VARIANT → deliveries/innings/info    |
+                        └───────────┬────────────────┘
+                                    │
+                                    ▼
+                        ┌─────────────────────────────┐
+                        │  Marts (dim_* / fact_*)     │   dim_match, dim_player, dim_team, fact_ball
+                        └────────────┬────────────────┘
+                                    │
+                                    ▼
+                        ┌─────────────────────────────┐
+                        │  Gold (v_*)                 │   v_match_summary, v_batting, v_bowling,
+                        │                             │   v_phase,  v_partnership
+                        └────────────┬────────────────┘
+                                    │
+                                    ▼
+                              Streamlit Dashboard
 ```
 
 ## Data Model
@@ -68,16 +80,21 @@ The custom generic test `unique_combination_of_columns` lives in `dbt_project/te
    python -m venv .venv && source .venv/bin/activate
    pip install -r requirements.txt
    ```
-4. **Ingest data**:
+4. **Ingest data** (single-file, local PUT + COPY INTO):
    ```bash
    python ingestion/ingest.py data/981017.json
    ```
-5. **Run transformations** (from the project root — `profiles.yml` lives inside `dbt_project/`):
+5. **Bulk ingestion via S3 + Snowpipe** (for continuous multi-file loading):
+   ```bash
+   aws s3 cp data/<match>.json s3://ipl-raw-ingest/land/
+   ```
+   Snowpipe auto-loads into `RAW_MATCH_JSON` within seconds.
+6. **Run transformations** (from the project root — `profiles.yml` lives inside `dbt_project/`):
    ```bash
    DBT_PROFILES_DIR=dbt_project .venv/bin/dbt run
    DBT_PROFILES_DIR=dbt_project .venv/bin/dbt test
    ```
-6. **Launch dashboard**:
+7. **Launch dashboard**:
    ```bash
    .venv/bin/streamlit run dashboard/app.py
    ```
@@ -98,7 +115,7 @@ IPL_Analytics/
 ├── BRD_IPL_Analytics.md      # Business requirements
 ├── data/                      # Raw Cricsheet JSON files
 ├── sql/                       # Snowflake DDL — snowflake_setup.sql, streamlit_deploy.sql
-├── ingestion/                 # Python ingestion — config.py, ingest.py (PUT + COPY INTO)
+├── ingestion/                 # Python ingestion — config.py, ingest.py (PUT + COPY INTO; S3 + Snowpipe)
 ├── dbt_project/               # dbt Core models — staging → marts → gold, tests, profiles.example.yml
 ├── dashboard/                 # Streamlit app — app.py, db.py (backends), ai_summary.py (Cortex-ready)
 ├── .env / .env.example        # Credentials (gitignored) + template
@@ -115,7 +132,7 @@ IPL_Analytics/
 
 ## Future Enhancements
 
-- **S3 bulk ingestion** — land match JSON files in an S3 bucket and load them via an external stage + Snowpipe for continuous multi-match ingestion (extending the current PUT + COPY INTO single-file flow).
+- ~~**S3 bulk ingestion**~~ ✅ — land match JSON files in an S3 bucket and load them via an external stage + Snowpipe for continuous multi-match ingestion (extending the current PUT + COPY INTO single-file flow).
 - **Multi-season analytics** — run the dbt pipeline over a full season to enable career/historical player statistics and season-level trends.
 - **Win-probability and prediction models** — e.g., Snowflake Cortex ML (forecasting, anomaly detection) once the dataset grows.
 - **Scheduled pipeline runs** — orchestrate ingestion + dbt via Snowflake tasks or an orchestrator like Airflow.
