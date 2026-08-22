@@ -2,6 +2,8 @@
 with balls as (
     select
         match_id,
+        season,
+        match_date,
         innings_no,
         batting_team,
         over_no,
@@ -28,6 +30,8 @@ grouped as (
 first_ball as (
     select
         match_id,
+        season,
+        match_date,
         innings_no,
         batting_team,
         partnership_id,
@@ -35,11 +39,13 @@ first_ball as (
         non_striker as batter2,
         min(ball_seq) as first_seq
     from grouped
-    group by match_id, innings_no, batting_team, partnership_id, batter, non_striker
+    group by match_id, season, match_date, innings_no, batting_team, partnership_id, batter, non_striker
     qualify row_number() over (partition by match_id, innings_no, partnership_id order by first_seq) = 1
 )
 select
     g.match_id,
+    g.season,
+    g.match_date,
     g.innings_no,
     g.batting_team,
     g.partnership_id + 1 as wicket_number,
@@ -55,5 +61,5 @@ join first_ball fb
    and g.innings_no = fb.innings_no
    and g.batting_team = fb.batting_team
    and g.partnership_id = fb.partnership_id
-group by g.match_id, g.innings_no, g.batting_team, g.partnership_id, fb.batter1, fb.batter2
+group by g.match_id, g.season, g.match_date, g.innings_no, g.batting_team, g.partnership_id, fb.batter1, fb.batter2
 order by g.match_id, g.innings_no, g.partnership_id

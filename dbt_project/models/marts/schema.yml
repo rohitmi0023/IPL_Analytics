@@ -23,30 +23,77 @@ models:
           - unique
           - not_null
   - name: dim_player
-    description: "Player dimension, one row per player per match."
-    data_tests:
-      - unique_combination_of_columns:
-          name: check_player_uniqueness
-          arguments:
-            column_list: [match_id, player_name]
+    description: "Global player dimension, one row per player."
     columns:
       - name: player_id
-        description: "Surrogate key, md5 of player_name."
+        description: "Surrogate key, Cricsheet registry hash (stable across matches)."
         data_tests:
           - unique
           - not_null
       - name: player_name
-        description: "Player name."
+        description: "Player full name."
+        data_tests:
+          - not_null
+      - name: first_season
+        description: "First season the player appeared in."
+        data_tests:
+          - not_null
+      - name: last_season
+        description: "Most recent season the player appeared in."
+        data_tests:
+          - not_null
+  - name: dim_player_team
+    description: "Bridge table: player-team assignment per match."
+    data_tests:
+      - unique_combination_of_columns:
+          name: check_player_team_uniqueness
+          arguments:
+            column_list: [player_id, match_id]
+    columns:
+      - name: player_id
+        description: "FK to dim_player.player_id."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_player')
+                field: player_id
+      - name: match_id
+        description: "Match identifier."
         data_tests:
           - not_null
       - name: team_name
         description: "Team the player represented in this match."
         data_tests:
           - not_null
-      - name: match_id
-        description: "Match identifier."
+  - name: dim_season
+    description: "Season level grain details"
+    columns:
+      - name: season
+        description: "Season Year"
+        data_tests:
+          - unique
+          - not_null
+      - name: total_matches
+        description: "Total Number Of Matches available in data set"
         data_tests:
           - not_null
+      - name: start_date
+        description: "Min date available for that season"
+        data_tests:
+          - not_null
+      - name: end_date
+        description: "Max date available for that season"
+        data_tests:
+          - not_null
+      - name: champion
+        description: "Season Winner"
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_team')
+                field: team_name
+
 
 # fact_ball model tests
 # - not_null: match_id, innings_no, over_no, ball_in_over, batter, bowler, batting_team, bowling_team, batter_id, bowler_id
@@ -84,6 +131,12 @@ models:
       - name: bowling_team
         data_tests:
           - not_null
+      - name: season
+        data_tests:
+          - not_null
+      - name: match_date
+        data_tests:
+          - not_null
       - name: batter_id
         data_tests:
           - not_null
@@ -94,3 +147,7 @@ models:
       - name: bowler_id
         data_tests:
           - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_player')
+                field: player_id

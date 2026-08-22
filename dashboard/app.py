@@ -1,5 +1,6 @@
 import json
 
+import pandas as pd
 import plotly.express as px
 import streamlit as st
 
@@ -49,9 +50,17 @@ def load_overs(match_id):
 
 
 matches = load_matches()
-options = [f"{r.TEAM_1} vs {r.TEAM_2} ({r.MATCH_DATE})" for r in matches.itertuples()]
+seasons = sorted(matches["SEASON"].unique().tolist(), reverse=True)
+selected_season = st.sidebar.selectbox("Season", ["All"] + [str(s) for s in seasons])
+
+if selected_season != "All":
+    filtered_matches = matches[matches["SEASON"] == int(selected_season)]
+else:
+    filtered_matches = matches
+
+options = [f"{r.TEAM_1} vs {r.TEAM_2} ({r.MATCH_DATE})" for r in filtered_matches.itertuples()]
 selected = st.sidebar.selectbox("Match", options)
-match_id = int(matches.iloc[options.index(selected)].MATCH_ID)
+match_id = int(filtered_matches.iloc[options.index(selected)].MATCH_ID)
 
 gold = load_gold(match_id)
 summary = gold["summary"]
@@ -65,8 +74,8 @@ team_choice = st.sidebar.selectbox("Team", ["All"] + sorted(summary["BATTING_TEA
 st.title("IPL Match Analytics")
 st.caption(f"Match {match_id} · {selected}")
 
-tab_summary, tab_batting, tab_bowling, tab_phases, tab_partners, tab_ai = st.tabs(
-    ["Match Summary", "Batting", "Bowling", "Phases", "Partnerships", "AI Commentary"]
+tab_summary, tab_batting, tab_bowling, tab_phases, tab_partners, tab_career, tab_ai = st.tabs(
+    ["Match Summary", "Batting", "Bowling", "Phases", "Partnerships", "Player Career", "AI Commentary"]
 )
 
 with tab_summary:
@@ -74,9 +83,9 @@ with tab_summary:
     inn2 = summary[summary["INNINGS_NO"] == 2].iloc[0] if len(summary) > 1 else None
 
     if inn2 is not None:
-        if inn2["RESULT_WICKETS"] is not None:
+        if pd.notna(inn2["RESULT_WICKETS"]):
             margin = f" by {int(inn2['RESULT_WICKETS'])} wickets"
-        elif inn2["RESULT_RUNS"] is not None:
+        elif pd.notna(inn2["RESULT_RUNS"]):
             margin = f" by {int(inn2['RESULT_RUNS'])} runs"
         else:
             margin = ""
@@ -202,6 +211,117 @@ with tab_partners:
         )
         fig.update_layout(xaxis_title="Runs", yaxis_title="")
         st.plotly_chart(fig, width="stretch")
+
+with tab_career:
+    st.subheader("Player Career Analytics")
+
+    # Load all batting and bowling data for career aggregation
+    @st.cache_data(ttl=3600)
+    def load_all_batting():
+        return get_backend().query(f"select * from V_BATTING")
+
+    @st.cache_data(ttl=3600)
+    def load_all_bowling():
+        return get_backend().query(f"select * from V_BOWLING")
+
+    all_batting = load_all_batting()
+    all_bowling = load_all_bowling()
+
+    all_players = sorted(set(all_batting["BATTER"].unique().tolist() + all_bowling["BOWLER"].unique().tolist()))
+    selected_player = st.sidebar.selectbox("Player", all_players, key="player_select")
+
+    # Filter to selected player
+    player_bat = all_batting[all_batting["BATTER"] == selected_player]
+    player_bowl = all_bowling[all_bowling["BOWLER"] == selected_player]
+
+    # Batting career stats
+    if len(player_bat) > 0:
+        st.markdown(f"### Batting — {selected_player}")
+        bat_stats = {
+            "matches": player_bat["MATCH_ID"].nunique(),
+            "total_runs": player_bat["RUNS"].sum(),
+            "avg": round(player_bat["RUNS"].mean(), 1),
+            "strike_rate": round(player_bat["STRIKE_RATE"].mean(), 1),
+            "fours": int(player_bat["FOURS"].sum()),
+            "sixes": int(player_bat["SIXES"].sum()),
+        }
+
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        c1.metric("Matches", bat_stats["matches"])
+        c2.metric("Runs", bat_stats["total_runs"])
+        c3.metric("Average", bat_stats["avg"])
+        c4.metric("Strike Rate", bat_stats["strike_rate"])
+        c5.metric("4s", bat_stats["fours"])
+        c6.metric("6s", bat_stats["sixes"])
+
+        # Season-by-season batting
+        bat_season = player_bat.groupby("SEASON").agg(
+            matches=("MATCH_ID", "nunique"),
+            runs=("RUNS", "sum"),
+            avg=("RUNS", "mean"),
+            strike_rate=("STRIKE_RATE", "mean"),
+        ).reset_index()
+        bat_season["SEASON"] = bat_season["SEASON"].astype(int)
+
+        fig = px.bar(
+            bat_season, x="SEASON", y="runs", text="runs",
+            labels={"SEASON": "Season", "runs": "Runs"},
+        )
+        fig.update_traces(textposition="outside")
+        fig.update_xaxes(type="category")
+        st.plotly_chart(fig, width="stretch")
+
+    # Bowling career stats
+    if len(player_bowl) > 0:
+        st.markdown(f"### Bowling — {selected_player}")
+        bowl_stats = {
+            "matches": player_bowl["MATCH_ID"].nunique(),
+            "total_wickets": int(player_bowl["WICKETS"].sum()),
+            "economy": round(player_bowl["ECONOMY"].mean(), 2),
+            "total_runs": int(player_bowl["RUNS_CONCEDED"].sum()),
+            "dot_balls": int(player_bowl["DOT_BALLS"].sum()),
+        }
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Matches", bowl_stats["matches"])
+        c2.metric("Wickets", bowl_stats["total_wickets"])
+        c3.metric("Economy", bowl_stats["economy"])
+        c4.metric("Runs Conceded", bowl_stats["total_runs"])
+        c5.metric("Dot Balls", bowl_stats["dot_balls"])
+
+        # Season-by-season bowling
+        bowl_season = player_bowl.groupby("SEASON").agg(
+            matches=("MATCH_ID", "nunique"),
+            wickets=("WICKETS", "sum"),
+            economy=("ECONOMY", "mean"),
+        ).reset_index()
+        bowl_season["SEASON"] = bowl_season["SEASON"].astype(int)
+
+        fig = px.bar(
+            bowl_season, x="SEASON", y="wickets", text="wickets",
+            labels={"SEASON": "Season", "wickets": "Wickets"},
+        )
+        fig.update_traces(textposition="outside")
+        fig.update_xaxes(type="category")
+        st.plotly_chart(fig, width="stretch")
+
+    # Match-by-match detail
+    if len(player_bat) > 0 or len(player_bowl) > 0:
+        st.markdown("### Match-by-Match Detail")
+        detail_frames = []
+        if len(player_bat) > 0:
+            bat_detail = player_bat[["SEASON", "MATCH_DATE", "BATTING_TEAM", "RUNS", "BALLS_FACED", "STRIKE_RATE", "FOURS", "SIXES", "DISMISSAL_KIND", "NOT_OUT"]].copy()
+            bat_detail.columns = ["Season", "Date", "Team", "Runs", "Balls", "SR", "4s", "6s", "Dismissal", "Not Out"]
+            bat_detail["Role"] = "Bat"
+            detail_frames.append(bat_detail)
+        if len(player_bowl) > 0:
+            bowl_detail = player_bowl[["SEASON", "MATCH_DATE", "BOWLING_TEAM", "WICKETS", "OVERS", "RUNS_CONCEDED", "ECONOMY", "DOT_BALLS", "MAIDENS"]].copy()
+            bowl_detail.columns = ["Season", "Date", "Team", "Wickets", "Overs", "Runs", "Econ", "Dots", "Maidens"]
+            bowl_detail["Role"] = "Bowl"
+            detail_frames.append(bowl_detail)
+        if detail_frames:
+            detail = pd.concat(detail_frames, ignore_index=True).sort_values("Date", ascending=False)
+            st.dataframe(detail, hide_index=True, width="stretch")
 
 with tab_ai:
     use_cortex, status = commentary_available()

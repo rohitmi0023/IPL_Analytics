@@ -1,6 +1,8 @@
 with deliveries as (
     select
         d.match_id,
+        m.season,
+        m.match_date,
         d.innings_no,
         d.batting_team,
         case when d.batting_team = m.team_1 then m.team_2 else m.team_1 end as bowling_team,
@@ -19,6 +21,8 @@ with deliveries as (
 )
 select
     d.match_id,
+    d.season,
+    d.match_date,
     d.innings_no,
     d.batting_team,
     d.bowling_team,
@@ -29,9 +33,9 @@ select
     d.bowler,
     tb.team_id   as batting_team_id,
     tw.team_id   as bowling_team_id,
-    pb.player_id as batter_id,
-    pns.player_id as non_striker_id,
-    pw.player_id as bowler_id,
+    sr_b.cricsheet_id::varchar(32)  as batter_id,
+    sr_ns.cricsheet_id::varchar(32) as non_striker_id,
+    sr_bw.cricsheet_id::varchar(32) as bowler_id,
     d.runs_batter,
     d.runs_extras,
     d.runs_total,
@@ -46,8 +50,8 @@ select
     d.wickets[0]:player_out::varchar as player_out,
     d.wickets[0]:fielders[0]:name::varchar as fielder_name
 from deliveries d
-join {{ ref('dim_team') }}  tb on d.batting_team = tb.team_name
-join {{ ref('dim_team') }}  tw on d.bowling_team = tw.team_name
-join {{ ref('dim_player') }} pb  on d.match_id = pb.match_id  and d.batter = pb.player_name
-join {{ ref('dim_player') }} pns on d.match_id = pns.match_id and d.non_striker = pns.player_name
-join {{ ref('dim_player') }} pw  on d.match_id = pw.match_id  and d.bowler = pw.player_name
+join {{ ref('dim_team') }} tb on d.batting_team = tb.team_name
+join {{ ref('dim_team') }} tw on d.bowling_team = tw.team_name
+join {{ ref('stg_registry') }} sr_b  on d.match_id = sr_b.match_id  and d.batter = sr_b.person_name
+join {{ ref('stg_registry') }} sr_ns on d.match_id = sr_ns.match_id and d.non_striker = sr_ns.person_name
+join {{ ref('stg_registry') }} sr_bw on d.match_id = sr_bw.match_id and d.bowler = sr_bw.person_name

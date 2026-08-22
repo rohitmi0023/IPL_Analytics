@@ -2,6 +2,8 @@
 with balls as (
     select
         match_id,
+        season,
+        match_date,
         innings_no,
         batting_team,
         case
@@ -17,6 +19,8 @@ with balls as (
 )
 select
     match_id,
+    season,
+    match_date,
     innings_no,
     batting_team,
     phase,
@@ -25,5 +29,5 @@ select
     count_if(is_wicket)     as wickets,
     round(sum(runs_total) * 6.0 / nullif(count_if(batter_faced), 0), 2) as run_rate
 from balls
-group by match_id, innings_no, batting_team, phase
+group by match_id, season, match_date, innings_no, batting_team, phase
 order by match_id, innings_no, phase

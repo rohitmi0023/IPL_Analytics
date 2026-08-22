@@ -2,26 +2,32 @@
 with overs_agg as (
     select
         match_id,
+        season,
+        match_date,
         innings_no,
         bowler,
         over_no,
         sum(runs_total)                  as runs,
         count_if(legal_delivery)         as legal_balls
     from {{ ref('fact_ball') }}
-    group by match_id, innings_no, bowler, over_no
+    group by match_id, season, match_date, innings_no, bowler, over_no
 ),
 maiden_overs as (
     select
         match_id,
+        season,
+        match_date,
         innings_no,
         bowler,
         count(*) as maidens
     from overs_agg
     where legal_balls = 6 and runs = 0
-    group by match_id, innings_no, bowler
+    group by match_id, season, match_date, innings_no, bowler
 )
 select
     fb.match_id,
+    fb.season,
+    fb.match_date,
     fb.innings_no,
     fb.bowling_team,
     fb.bowler,
@@ -39,5 +45,5 @@ left join maiden_overs mo
     on fb.match_id = mo.match_id
    and fb.innings_no = mo.innings_no
    and fb.bowler = mo.bowler
-group by fb.match_id, fb.innings_no, fb.bowling_team, fb.bowler, fb.bowler_id, mo.maidens
+group by fb.match_id, fb.season, fb.match_date, fb.innings_no, fb.bowling_team, fb.bowler, fb.bowler_id, mo.maidens
 order by fb.match_id, fb.innings_no, runs_conceded
