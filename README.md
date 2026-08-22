@@ -27,14 +27,16 @@ End-to-end data pipeline for Indian Premier League (IPL) ball-by-ball match anal
                              └──────┬────────────┘
                                     │  dbt Core
                                     ▼
-                        ┌────────────────────────────┐
-                        │  Staging (stg_*)           │   flatten VARIANT → deliveries/innings/info    |
-                        └───────────┬────────────────┘
-                                    │
-                                    ▼
-                        ┌─────────────────────────────┐
-                        │  Marts (dim_* / fact_*)     │   dim_match, dim_player, dim_team, fact_ball
-                        └────────────┬────────────────┘
+                    ┌────────────────────────────┐
+                    │  Staging (stg_*)           │   stg_deliveries, stg_matches, stg_innings,
+                    │                            │   stg_registry (Cricsheet player hashes)
+                    └───────────┬────────────────┘
+                                │
+                                ▼
+                    ┌─────────────────────────────┐
+                    │  Marts (dim_* / fact_*)     │   dim_match, dim_player, dim_player_team,
+                    │                            │   dim_team, dim_season, fact_ball
+                    └────────────┬────────────────┘
                                     │
                                     ▼
                         ┌─────────────────────────────┐
@@ -51,21 +53,23 @@ End-to-end data pipeline for Indian Premier League (IPL) ball-by-ball match anal
 | Layer | Contents |
 |---|---|
 | RAW | Raw match JSON stored as VARIANT, one row per file |
-| Staging | Flattened deliveries, innings, and match info |
-| Marts | `dim_match`, `dim_player`, `dim_team`, `fact_ball` (1-indexed over/ball, extras, wickets) |
+| Staging | Flattened deliveries, innings, match info, and Cricsheet player registry |
+| Marts | `dim_match`, `dim_player` (global), `dim_player_team` (bridge), `dim_team`, `dim_season`, `fact_ball` (season-aware, 1-indexed over/ball, extras, wickets) |
 | Gold | Analytics views: match summary, batting, bowling, phase, partnerships |
 
 ## Data Quality & Testing
 
-dbt ships a data-quality layer on top of the models — **29 tests**, all passing via `DBT_PROFILES_DIR=dbt_project .venv/bin/dbt test`:
+dbt ships a data-quality layer on top of the models — **38 tests**, all passing via `DBT_PROFILES_DIR=dbt_project .venv/bin/dbt test`:
 
 | Scope | Tests |
 |---|---|
 | Raw source `raw_match_json` | `not_null` on all columns; `unique` on `match_id` (5) |
 | `dim_match` | `match_id` unique + not-null (2) |
 | `dim_team` | `team_id` & `team_name` unique + not-null (4) |
-| `dim_player` | Composite `check_player_uniqueness`; `player_id` unique + not-null; key `not_null`s (6) |
-| `fact_ball` | Composite `check_fact_delivery_grain_uniqueness` on (match_id, innings_no, over_no, ball_in_over); 8 `not_null`; FK relationship `batter_id → dim_player.player_id`; `bowler_id` not-null (12) |
+| `dim_player` | `player_id` unique + not-null; `player_name`, `first_season`, `last_season` not-null (4) |
+| `dim_player_team` | Composite `check_player_team_uniqueness` on [player_id, match_id]; `player_id` not-null + FK → dim_player; `match_id` not-null; `team_name` not-null (6) |
+| `dim_season` | `season` unique + not-null; `total_matches`, `start_date`, `end_date` not-null; `champion` FK → dim_team (6) |
+| `fact_ball` | Composite `check_fact_delivery_grain_uniqueness` on (match_id, innings_no, over_no, ball_in_over); 8 `not_null`; `season` not_null; `match_date` not_null; FK `batter_id → dim_player.player_id`; FK `bowler_id → dim_player.player_id` (13) |
 
 The custom generic test `unique_combination_of_columns` lives in `dbt_project/tests/generic/`.
 
@@ -103,7 +107,9 @@ The custom generic test `unique_combination_of_columns` lives in `dbt_project/te
 
 `dashboard/app.py` is a Streamlit app on the **Gold layer**:
 
-- Six tabs — Match Summary, Batting, Bowling, Phases, Partnerships, AI Commentary — with match and team filters.
+- Seven tabs — Match Summary, Batting, Bowling, Phases, Partnerships, Player Career, AI Commentary — with season, match, and team filters.
+- **Season selector** in sidebar: filter all views by IPL season.
+- **Player Career tab**: career batting/bowling aggregates, season-by-season charts, match-by-match detail.
 - Plotly charts: runs-per-over trend, top scorers, economy vs wickets, phase run-rates, top partnerships.
 - `db.py` abstracts the query layer with two interchangeable backends (snowflake-connector locally, Snowpark session in Snowflake).
 - `ai_summary.py` is Cortex-ready: calls `SNOWFLAKE.CORTEX.COMPLETE` with facts from the gold views when the account supports it, otherwise a deterministic template (the UI shows which engine produced it).
@@ -129,10 +135,12 @@ IPL_Analytics/
 - Which bowler had the best economy rate?
 - Run rate in powerplay vs. death overs?
 - Top partnership and between which batters?
+- Career batting/bowling stats across seasons?
+- Which player scored the most runs in a season?
 
 ## Future Enhancements
 
 - ~~**S3 bulk ingestion**~~ ✅ — land match JSON files in an S3 bucket and load them via an external stage + Snowpipe for continuous multi-match ingestion (extending the current PUT + COPY INTO single-file flow).
-- **Multi-season analytics** — run the dbt pipeline over a full season to enable career/historical player statistics and season-level trends.
+- ~~**Multi-season analytics**~~ ✅ — global player IDs (Cricsheet hashes), season-aware fact_ball, dim_season, season selector + Player Career dashboard tab; aggregate tables (fct_player_season, fct_team_season) pending.
 - **Win-probability and prediction models** — e.g., Snowflake Cortex ML (forecasting, anomaly detection) once the dataset grows.
 - **Scheduled pipeline runs** — orchestrate ingestion + dbt via Snowflake tasks or an orchestrator like Airflow.
