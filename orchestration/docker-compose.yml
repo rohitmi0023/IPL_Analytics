@@ -1,0 +1,102 @@
+x-airflow-common: &airflow-common
+  build: .
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: "81HqDtbqAywKSOumSha3BhWNOdQ26slT6K0YaZeZyPs="
+    AIRFLOW__API_AUTH__JWT_SECRET: "rLE5hcoCfcJsVS8Ua3RDM2JX7bxS26JDefNNfYGuOsk="
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW__CORE__UNIT_TEST_MODE: "false"
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: "Asia/Kolkata"
+    AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: "Asia/Kolkata"
+    AIRFLOW__CORE__AIRFLOW_UID: ${AIRFLOW_UID:-50000}
+    AIRFLOW_AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+    AIRFLOW_CONN_SMTP_DEFAULT: "smtp://mailhog:1025?disable_ssl=true&disable_tls=true"
+    PYTHONPATH: /opt/airflow
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - airflow-logs:/opt/airflow/logs
+    - ../dbt_project:/opt/airflow/dbt_project
+    - ../.env:/opt/airflow/.env
+    - ./simple_auth_manager_passwords.json:/opt/airflow/simple_auth_manager_passwords.json.generated
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - airflow-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        test -f /opt/airflow/simple_auth_manager_passwords.json.generated \
+          || (echo "ERROR: simple_auth_manager_passwords.json missing. Run: cp simple_auth_manager_passwords.example.json simple_auth_manager_passwords.json" && exit 1)
+        echo "Airflow init complete"
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: airflow api-server --port 8080
+    ports:
+      - "8181:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      retries: 10
+      start_period: 60s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: airflow dag-processor
+    healthcheck:
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "DagProcessorJob"]
+      interval: 30s
+      retries: 10
+      start_period: 60s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: airflow scheduler
+    healthcheck:
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob"]
+      interval: 30s
+      retries: 10
+      start_period: 60s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  airflow-pgdata:
+  airflow-logs:

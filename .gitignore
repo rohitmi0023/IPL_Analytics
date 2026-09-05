@@ -27,6 +27,9 @@ logs/
 # Streamlit
 .streamlit/secrets.toml
 
+# Airflow orchestration (orchestration/)
+orchestration/simple_auth_manager_passwords.json
+
 
 # self used
 plan.txt

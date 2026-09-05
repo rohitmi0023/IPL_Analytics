@@ -1,0 +1,17 @@
+{
+  "name": "IPL Airflow Dev",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "airflow-webserver",
+  "workspaceFolder": "/opt/airflow",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/home/airflow/.local/bin/python"
+      }
+    }
+  }
+}

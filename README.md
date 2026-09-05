@@ -59,17 +59,17 @@ End-to-end data pipeline for Indian Premier League (IPL) ball-by-ball match anal
 
 ## Data Quality & Testing
 
-dbt ships a data-quality layer on top of the models — **38 tests**, all passing via `DBT_PROFILES_DIR=dbt_project .venv/bin/dbt test`:
+dbt ships a data-quality layer on top of the models — **42 tests**, all passing via `DBT_PROFILES_DIR=dbt_project .venv/bin/dbt test`:
 
 | Scope | Tests |
 |---|---|
 | Raw source `raw_match_json` | `not_null` on all columns; `unique` on `match_id` (5) |
 | `dim_match` | `match_id` unique + not-null (2) |
 | `dim_team` | `team_id` & `team_name` unique + not-null (4) |
-| `dim_player` | `player_id` unique + not-null; `player_name`, `first_season`, `last_season` not-null (4) |
-| `dim_player_team` | Composite `check_player_team_uniqueness` on [player_id, match_id]; `player_id` not-null + FK → dim_player; `match_id` not-null; `team_name` not-null (6) |
+| `dim_player` | `player_id` unique + not-null; `player_name`, `first_season`, `last_season` not-null (5) |
+| `dim_player_team` | Composite `check_player_team_uniqueness` on [player_id, match_id]; `player_id` not-null + FK → dim_player; `match_id` not-null; `team_name` not-null (5) |
 | `dim_season` | `season` unique + not-null; `total_matches`, `start_date`, `end_date` not-null; `champion` FK → dim_team (6) |
-| `fact_ball` | Composite `check_fact_delivery_grain_uniqueness` on (match_id, innings_no, over_no, ball_in_over); 8 `not_null`; `season` not_null; `match_date` not_null; FK `batter_id → dim_player.player_id`; FK `bowler_id → dim_player.player_id` (13) |
+| `fact_ball` | Composite `check_fact_delivery_grain_uniqueness` on (match_id, innings_no, over_no, ball_in_over); 8 `not_null`; `season` not_null; `match_date` not_null; FK `batter_id → dim_player.player_id`; FK `bowler_id → dim_player.player_id` (15) |
 
 The custom generic test `unique_combination_of_columns` lives in `dbt_project/tests/generic/`.
 
@@ -114,6 +114,43 @@ The custom generic test `unique_combination_of_columns` lives in `dbt_project/te
 - `db.py` abstracts the query layer with two interchangeable backends (snowflake-connector locally, Snowpark session in Snowflake).
 - `ai_summary.py` is Cortex-ready: calls `SNOWFLAKE.CORTEX.COMPLETE` with facts from the gold views when the account supports it, otherwise a deterministic template (the UI shows which engine produced it).
 
+## Airflow Orchestration
+
+The pipeline is also orchestrated locally with **Apache Airflow 3.3.1** running in Docker Compose (`orchestration/`). A DAG (`ipl_analytics_pipeline`, **daily at 1 AM IST**, 3 retries, one run at a time) runs the dbt journeys on a schedule:
+
+```
+check_new_data ──▶ dbt_run ──▶ dbt_test ──▶ notify_success
+      │  ▲
+      └──┴──────────────────────▶ notify_failure   (fires on any failure)
+```
+
+| Task | What it runs |
+|---|---|
+| `check_new_data` | `dbt source freshness` — gates on source staleness (warn 1h / **error 24h**) |
+| `dbt_run` | `dbt run` — rebuild staging → marts → gold |
+| `dbt_test` | `dbt test` — the 42 data-quality tests above |
+| `notify_success` / `notify_failure` | pipeline outcome hooks (placeholders for now) |
+
+**Quick start:**
+
+```bash
+cd orchestration
+cp simple_auth_manager_passwords.example.json simple_auth_manager_passwords.json   # then set your own UI username/password
+docker compose up -d
+```
+
+- UI at **http://localhost:8181** (default login `admin` / `airflow`).
+- `docker compose ps` to check all services are healthy.
+- **Notify emails**: the `notify_*` tasks send emails via a local **MailHog** (fake SMTP) — view them at **http://localhost:8025** (no real email is delivered).
+- Freshness gate: if the raw data is older than 24h, `check_new_data` fails (STALE) and the failure hook fires — reload source data to go green.
+
+**Troubleshooting gotchas (Airflow 3):**
+
+- **`Connection refused` / tasks never start** — `AIRFLOW__CORE__EXECUTION_API_SERVER_URL` must point at the api-server container, not `localhost` (e.g. `http://airflow-webserver:8080/execution/`).
+- **`Invalid auth token` when tasks start** — `AIRFLOW__API_AUTH__JWT_SECRET` is auto-generated *per container*; pin it to one fixed value across all services.
+- **DAGs never register** — `airflow-dag-processor` is a required standalone service in Airflow 3 (the scheduler can't spawn it).
+- **`SSL: WRONG_VERSION_NUMBER` from EmailOperator** — the smtp provider defaults SSL/STARTTLS **on**; the MailHog connection uses `?disable_ssl=true&disable_tls=true` extras. To use a real provider, replace the `AIRFLOW_CONN_SMTP_DEFAULT` value in `docker-compose.yml` (e.g. `smtp://user:pass@smtp.gmail.com:587`), and add any delivery-SSL options the provider needs.
+
 ## Project Structure
 
 ```
@@ -124,6 +161,9 @@ IPL_Analytics/
 ├── ingestion/                 # Python ingestion — config.py, ingest.py (PUT + COPY INTO; S3 + Snowpipe)
 ├── dbt_project/               # dbt Core models — staging → marts → gold, tests, profiles.example.yml
 ├── dashboard/                 # Streamlit app — app.py, db.py (backends), ai_summary.py (Cortex-ready)
+├── orchestration/             # Airflow 3 local deployment — docker-compose.yml, DAGs, Dev Container
+│   ├── dags/ipl_pipeline.py   #    freshness gate → dbt run → dbt test → notify
+│   └── simple_auth_manager_passwords.example.json  #    UI credentials template (copy → ...passwords.json)
 ├── .env / .env.example        # Credentials (gitignored) + template
 └── requirements.txt           # Python dependencies
 ```
@@ -143,4 +183,4 @@ IPL_Analytics/
 - ~~**S3 bulk ingestion**~~ ✅ — land match JSON files in an S3 bucket and load them via an external stage + Snowpipe for continuous multi-match ingestion (extending the current PUT + COPY INTO single-file flow).
 - ~~**Multi-season analytics**~~ ✅ — global player IDs (Cricsheet hashes), season-aware fact_ball, dim_season, season selector + Player Career dashboard tab; aggregate tables (fct_player_season, fct_team_season) pending.
 - **Win-probability and prediction models** — e.g., Snowflake Cortex ML (forecasting, anomaly detection) once the dataset grows.
-- **Scheduled pipeline runs** — orchestrate ingestion + dbt via Snowflake tasks or an orchestrator like Airflow.
+- ~~**Scheduled pipeline runs**~~ — ✅ orchestrated via **Airflow** (`orchestration/`): daily `dbt source freshness → dbt run → dbt test` with failure hooks.

@@ -124,8 +124,8 @@ def main() -> int:
     conn = connect()
     try:
         put_files(conn, files)
-        match_ids = [match_id_from_filename(f) for f in files]
-        errors = copy_files(conn, match_ids)
+        # match_ids = [match_id_from_filename(f) for f in files]
+        # errors = copy_files(conn, match_ids)
     finally:
         conn.close()
 
