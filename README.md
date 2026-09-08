@@ -5,7 +5,7 @@ This pipeline is testing on IPL data, can be tested for other formats matches as
 
 Data Link: [Cricsheet Website](https://cricsheet.org/matches/)
 
-**Tech stack:** Python · Snowflake · dbt Core · Streamlit · Airflow 
+**Tech stack:** Python · Snowflake · dbt Core · Streamlit · Airflow
 
 ## Architecture
 
@@ -17,8 +17,8 @@ Data Link: [Cricsheet Website](https://cricsheet.org/matches/)
                               ┌──────────────┴──────────────┐
                               ▼                              ▼
                     ┌─────────────────┐          ┌────────────────────┐
-                    │  Local file     │          │  S3 bucket         │
-                    │  PUT + COPY INTO│          │  (land/)           │
+                    │  Local files    │          │  S3 bucket         │
+                    │  PUT → Snowpipe │          │  (land/)           │
                     └────────┬────────┘          └────────┬───────────┘
                              │                            │
                              │                   Snowpipe (AUTO_INGEST)
@@ -78,7 +78,7 @@ The custom generic test `unique_combination_of_columns` lives in `dbt_project/te
 
 ## Quickstart
 
-1. **Set up Snowflake** — run `sql/snowflake_setup.sql` (creates database, warehouses, role, schema, stage, file format, and raw table).
+1. **Set up Snowflake** — run `sql/snowflake_setup.sql` (creates database, warehouses, role, schema, stage, file format, raw table, and Snowpipe).
 2. **Configure credentials**:
    - Copy `.env.example` to `.env` and fill in your Snowflake connection (used by ingestion and the dashboard).
    - Copy `dbt_project/profiles.example.yml` to `dbt_project/profiles.yml` and fill it in (used by dbt Core — it's gitignored, so credentials never get committed).
@@ -87,13 +87,13 @@ The custom generic test `unique_combination_of_columns` lives in `dbt_project/te
    python -m venv .venv && source .venv/bin/activate
    pip install -r requirements.txt
    ```
-4. **Ingest data** (single-file, local PUT + COPY INTO):
+4. **Ingest data** (local bulk, folder-level — PUTs all `*.json` in the folder to the internal stage; Snowpipe copies them into `RAW_MATCH_JSON`):
    ```bash
-   python ingestion/ingest.py data/981017.json
+   python ingestion/ingest.py data/
    ```
-5. **Bulk ingestion via S3 + Snowpipe** (for continuous multi-file loading):
+5. **Bulk ingestion via S3 + Snowpipe** *(optional — only if you configure an external S3 stage + event notifications yourself; not created by `snowflake_setup.sql`)*:
    ```bash
-   aws s3 cp data/<match>.json s3://ipl-raw-ingest/land/
+   aws s3 cp data/<match>.json s3://your-bucket/land/
    ```
    Snowpipe auto-loads into `RAW_MATCH_JSON` within seconds.
 6. **Run transformations** (from the project root — `profiles.yml` lives inside `dbt_project/`):
@@ -132,7 +132,7 @@ check_new_data ──▶ dbt_run ──▶ dbt_test ──▶ notify_success
 | `check_new_data` | `dbt source freshness` — gates on source staleness (warn 1h / **error 24h**) |
 | `dbt_run` | `dbt run` — rebuild staging → marts → gold |
 | `dbt_test` | `dbt test` — the 42 data-quality tests above |
-| `notify_success` / `notify_failure` | pipeline outcome hooks (placeholders for now) |
+| `notify_success` / `notify_failure` | EmailOperator — outcome emails via MailHog (view at `localhost:8025`, swap to real SMTP via `AIRFLOW_CONN_SMTP_DEFAULT`) |
 
 **Quick start:**
 
@@ -159,7 +159,7 @@ docker compose up -d
 ```
 IPL_Analytics/
 ├── BRD_IPL_Analytics.md      # Business requirements
-├── data/                      # Raw Cricsheet JSON files
+├── data/                      # Raw Cricsheet JSON files (gitignored)
 ├── sql/                       # Snowflake DDL — snowflake_setup.sql, streamlit_deploy.sql
 ├── ingestion/                 # Python ingestion — config.py, ingest.py (PUT + COPY INTO; S3 + Snowpipe)
 ├── dbt_project/               # dbt Core models — staging → marts → gold, tests, profiles.example.yml
