@@ -34,3 +34,5 @@ orchestration/simple_auth_manager_passwords.json
 # self used
 plan.txt
 
+# Match Data
+data/

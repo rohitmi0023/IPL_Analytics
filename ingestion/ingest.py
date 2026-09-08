@@ -1,8 +1,6 @@
-import argparse
+from argparse import ArgumentParser
 import glob
-import os
 import sys
-from pathlib import Path
 
 import snowflake.connector
 
@@ -20,15 +18,10 @@ from config import (
 )
 
 
-def match_id_from_filename(filename: str) -> str:
-    return Path(filename).stem
-
-
-def resolve_files(patterns: list[str]) -> list[str]:
-    files = []
-    for pattern in patterns:
-        files.extend(glob.glob(pattern))
-    return sorted(dict.fromkeys(files))
+def resolve_files(pattern: list[str]) -> list[str]:
+    folder_path = f"{pattern[0]}/*.json"
+    match_files = glob.glob(folder_path)
+    return sorted(match_files)
 
 
 def connect():
@@ -49,83 +42,39 @@ def connect():
 
 
 def put_files(conn, files: list[str]) -> None:
-    for file in files:
-        local = file.replace("\\", "/")
+    try:
         cur = conn.cursor()
-        try:
-#             PUT 'file:///Users/rohitmi/Downloads/IPL_Analytics/data/981017.json'
-#               @IPL_ANALYTICS_DB.RAW.IPL_STAGE
-#               OVERWRITE=TRUE AUTO_COMPRESS=FALSE;
+        for file in files:
             cur.execute(
-                f"PUT 'file://{local}' @{STAGE_NAME} "
-                "OVERWRITE=TRUE AUTO_COMPRESS=FALSE"
+                f"PUT 'file://{file}' @{STAGE_NAME} "
+                "OVERWRITE=FALSE AUTO_COMPRESS=FALSE"
             )
             print(f"PUT OK: {file}")
-        finally:
-            cur.close()
-
-
-def copy_files(conn, match_ids: list[str]) -> int:
-    placeholders = ",".join(f"'{mid}'" for mid in match_ids)
-    cur = conn.cursor()
-    try:
-        # DELETE FROM IPL_ANALYTICS_DB.RAW.RAW_MATCH_JSON WHERE match_id = '981017';
-        cur.execute(f"DELETE FROM {RAW_TABLE} WHERE match_id IN ({placeholders})")
-        deleted = cur.rowcount
-        # COPY INTO IPL_ANALYTICS_DB.RAW.RAW_MATCH_JSON (match_id, file_name, raw_variant)
-        # FROM (
-        #     SELECT REGEXP_SUBSTR(metadata$filename, '([^/]+)\.json$', 1, 1, 'e', 1),
-        #         metadata$filename,
-        #         $1
-        #     FROM @IPL_ANALYTICS_DB.RAW.IPL_STAGE
-        # )
-        # FILE_FORMAT = (FORMAT_NAME = 'IPL_ANALYTICS_DB.RAW.IPL_JSON_FORMAT');
-        cur.execute(
-            f"""
-            COPY INTO {RAW_TABLE} (match_id, file_name, raw_variant)
-            FROM (
-                SELECT REGEXP_SUBSTR(metadata$filename, '([^/]+)\\.json$', 1, 1, 'e', 1),
-                       metadata$filename,
-                       $1
-                FROM @{STAGE_NAME}
-            )
-            FILE_FORMAT = (FORMAT_NAME = '{FILE_FORMAT}')
-            """
-        )
-        loaded = 0
-        errors = 0
-        for row in cur:
-            if row[1] == "LOADED":
-                loaded += 1
-            elif row[1] == "LOAD_FAILED":
-                errors += 1
-        print(f"COPY INTO complete: {loaded} loaded, {errors} failed (deleted {deleted} prior rows)")
-        return errors
     finally:
         cur.close()
+        return 
+        
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Ingest Cricsheet match JSON files into Snowflake RAW layer."
+    parser = ArgumentParser(
+        description="Ingest Cricsheet match JSON files from the given Folder location into Snowflake RAW layer."
     )
     parser.add_argument(
         "paths",
         nargs="+",
-        help="One or more paths/globs to match JSON files, e.g. data/981017.json",
+        help="One Folder paths/globs to match JSON files, e.g. data/year_2016",
     )
     args = parser.parse_args()
-
     files = resolve_files(args.paths)
+    
     if not files:
         print(f"No files matched: {args.paths}")
         return 1
 
     conn = connect()
     try:
-        put_files(conn, files)
-        # match_ids = [match_id_from_filename(f) for f in files]
-        # errors = copy_files(conn, match_ids)
+        errors = put_files(conn, files)
     finally:
         conn.close()
 
@@ -134,3 +83,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+

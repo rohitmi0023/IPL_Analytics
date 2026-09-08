@@ -1,8 +1,11 @@
 # IPL Analytics — Ball-by-Ball Match Analysis
 
 End-to-end data pipeline for Indian Premier League (IPL) ball-by-ball match analytics: ingests Cricsheet JSON match data into Snowflake, transforms it with dbt Core, and visualizes it in a Streamlit dashboard.
+This pipeline is testing on IPL data, can be tested for other formats matches as well.
 
-**Tech stack:** Python · Snowflake · dbt Core · Streamlit
+Data Link: [Cricsheet Website](https://cricsheet.org/matches/)
+
+**Tech stack:** Python · Snowflake · dbt Core · Streamlit · Airflow 
 
 ## Architecture
 
