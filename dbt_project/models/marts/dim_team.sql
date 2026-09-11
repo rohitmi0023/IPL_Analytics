@@ -1,5 +1,5 @@
 select
-    md5(team_name)::varchar(32) as team_id,
+    {{ dbt_utils.generate_surrogate_key(['team_name']) }} :: varchar(32) as team_id,
     team_name
 from (
     select team_1 as team_name from {{ ref('stg_matches') }}

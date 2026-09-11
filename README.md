@@ -70,11 +70,11 @@ dbt ships a data-quality layer on top of the models — **42 tests**, all passin
 | `dim_match` | `match_id` unique + not-null (2) |
 | `dim_team` | `team_id` & `team_name` unique + not-null (4) |
 | `dim_player` | `player_id` unique + not-null; `player_name`, `first_season`, `last_season` not-null (5) |
-| `dim_player_team` | Composite `check_player_team_uniqueness` on [player_id, match_id]; `player_id` not-null + FK → dim_player; `match_id` not-null; `team_name` not-null (5) |
+| `dim_player_team` | Composite `dbt_utils.unique_combination_of_columns` on [player_id, match_id]; `player_id` not-null + FK → dim_player; `match_id` not-null; `team_name` not-null (5) |
 | `dim_season` | `season` unique + not-null; `total_matches`, `start_date`, `end_date` not-null; `champion` FK → dim_team (6) |
-| `fact_ball` | Composite `check_fact_delivery_grain_uniqueness` on (match_id, innings_no, over_no, ball_in_over); 8 `not_null`; `season` not_null; `match_date` not_null; FK `batter_id → dim_player.player_id`; FK `bowler_id → dim_player.player_id` (15) |
+| `fact_ball` | Composite `dbt_utils.unique_combination_of_columns` (`check_fact_delivery_grain_uniqueness`) on (match_id, innings_no, over_no, ball_in_over); 8 `not_null`; `season` not_null; `match_date` not_null; FK `batter_id → dim_player.player_id`; FK `bowler_id → dim_player.player_id` (15) |
 
-The custom generic test `unique_combination_of_columns` lives in `dbt_project/tests/generic/`.
+Composite-uniqueness checks use the **dbt-utils package** (`dbt_utils.unique_combination_of_columns`), pinned in `dbt_project/packages.yml`. The hand-written `tests/generic/unique_combination_of_columns.sql` (the pre-package version) is kept for reference.
 
 ## Quickstart
 
@@ -96,8 +96,9 @@ The custom generic test `unique_combination_of_columns` lives in `dbt_project/te
    aws s3 cp data/<match>.json s3://your-bucket/land/
    ```
    Snowpipe auto-loads into `RAW_MATCH_JSON` within seconds.
-6. **Run transformations** (from the project root — `profiles.yml` lives inside `dbt_project/`):
+6. **Run transformations** (from the project root — `profiles.yml` lives inside `dbt_project/`). First time only, install the pinned dbt-utils package:
    ```bash
+   DBT_PROFILES_DIR=dbt_project .venv/bin/dbt deps
    DBT_PROFILES_DIR=dbt_project .venv/bin/dbt run
    DBT_PROFILES_DIR=dbt_project .venv/bin/dbt test
    ```
@@ -162,7 +163,7 @@ IPL_Analytics/
 ├── data/                      # Raw Cricsheet JSON files (gitignored)
 ├── sql/                       # Snowflake DDL — snowflake_setup.sql, streamlit_deploy.sql
 ├── ingestion/                 # Python ingestion — config.py, ingest.py (PUT + COPY INTO; S3 + Snowpipe)
-├── dbt_project/               # dbt Core models — staging → marts → gold, tests, profiles.example.yml
+├── dbt_project/               # dbt Core models — staging → marts → gold, packages.yml (dbt-utils), tests, profiles.example.yml
 ├── dashboard/                 # Streamlit app — app.py, db.py (backends), ai_summary.py (Cortex-ready)
 ├── orchestration/             # Airflow 3 local deployment — docker-compose.yml, DAGs, Dev Container
 │   ├── dags/ipl_pipeline.py   #    freshness gate → dbt run → dbt test → notify
