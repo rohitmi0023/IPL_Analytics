@@ -8,15 +8,15 @@ with player_names as (
     lateral flatten(input => p.value) pp
 )
 
-select 
-player_name,
-cricsheet_id as player_id,
-min(season) as first_season,
-max(season) as last_season
+select
+    r.cricsheet_id                     as player_id,
+    max_by(p.player_name, length(p.player_name)) as player_name,
+    min(m.season)                      as first_season,
+    max(m.season)                      as last_season
 from {{ ref('stg_registry') }} r
-join {{ref('stg_matches')}} m
+join {{ ref('stg_matches') }} m
 on r.match_id = m.match_id
 join player_names p
 on p.player_name = r.person_name
 and p.match_id = r.match_id
-group by 1, 2
+group by 1
