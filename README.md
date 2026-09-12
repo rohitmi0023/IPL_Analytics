@@ -57,12 +57,12 @@ Data Link: [Cricsheet Website](https://cricsheet.org/matches/)
 |---|---|
 | RAW | Raw match JSON stored as VARIANT, one row per file |
 | Staging | Flattened deliveries, innings, match info, and Cricsheet player registry |
-| Marts | `dim_match`, `dim_player` (global), `dim_player_team` (bridge), `dim_team`, `dim_season`, `fact_ball` (season-aware, 1-indexed over/ball, extras, wickets) |
+| Marts | `dim_match`, `dim_player` (global), `dim_player_team` (bridge), `dim_team`, `dim_season`, `fact_ball` (incremental; season-aware, 1-indexed over/ball, extras, wickets) |
 | Gold | Analytics views: match summary, batting, bowling, phase, partnerships |
 
 ## Data Quality & Testing
 
-dbt ships a data-quality layer on top of the models — **42 tests**, all passing via `DBT_PROFILES_DIR=dbt_project .venv/bin/dbt test`:
+dbt ships a data-quality layer on top of the models — **45 tests**, all passing via `DBT_PROFILES_DIR=dbt_project .venv/bin/dbt test`:
 
 | Scope | Tests |
 |---|---|
@@ -72,7 +72,7 @@ dbt ships a data-quality layer on top of the models — **42 tests**, all passin
 | `dim_player` | `player_id` unique + not-null; `player_name`, `first_season`, `last_season` not-null (5) |
 | `dim_player_team` | Composite `dbt_utils.unique_combination_of_columns` on [player_id, match_id]; `player_id` not-null + FK → dim_player; `match_id` not-null; `team_name` not-null (5) |
 | `dim_season` | `season` unique + not-null; `total_matches`, `start_date`, `end_date` not-null; `champion` FK → dim_team (6) |
-| `fact_ball` | Composite `dbt_utils.unique_combination_of_columns` (`check_fact_delivery_grain_uniqueness`) on (match_id, innings_no, over_no, ball_in_over); 8 `not_null`; `season` not_null; `match_date` not_null; FK `batter_id → dim_player.player_id`; FK `bowler_id → dim_player.player_id` (15) |
+| `fact_ball` | Composite `dbt_utils.unique_combination_of_columns` (`check_fact_delivery_grain_uniqueness`) on (match_id, innings_no, over_no, ball_in_over); `delivery_key` unique + not-null; `loaded_at` not-null; 8 `not_null`; `season` not_null; `match_date` not_null; FK `batter_id → dim_player.player_id`; FK `bowler_id → dim_player.player_id` (18) |
 
 Composite-uniqueness checks use the **dbt-utils package** (`dbt_utils.unique_combination_of_columns`), pinned in `dbt_project/packages.yml`. The hand-written `tests/generic/unique_combination_of_columns.sql` (the pre-package version) is kept for reference.
 

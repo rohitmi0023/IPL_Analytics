@@ -108,6 +108,13 @@ models:
           arguments:
             combination_of_columns: [match_id, innings_no, over_no, ball_in_over]
     columns:
+      - name: delivery_key
+        data_tests:
+          - not_null
+          - unique
+      - name: loaded_at
+        data_tests:
+          - not_null
       - name: match_id
         data_tests:
           - not_null

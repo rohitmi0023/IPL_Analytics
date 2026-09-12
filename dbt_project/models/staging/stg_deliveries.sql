@@ -11,7 +11,8 @@ d.value:runs:batter::INT as runs_batter,
 d.value:runs:extras::INT as runs_extras,
 d.value:runs:total::INT as runs_total,
 d.value:extras as extras,
-d.value:wickets as wickets
+d.value:wickets as wickets,
+r.loaded_at as loaded_at
 from {{ source('raw', 'raw_match_json') }} r,
 lateral flatten(input => r.raw_variant:innings) i,
 lateral flatten(input => i.value:overs) o,
